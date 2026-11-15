@@ -106,6 +106,13 @@ public class Wine {
             try enableDXVK(bottle: bottle)
         }
 
+        var args = args
+        // Steam's CEF UI composites web views through cross-process shared textures, which DXVK 1.10
+        // lacks (store/community pages render black). Software-composite the UI only; games still use DXVK.
+        if url.lastPathComponent.lowercased() == "steam.exe", !args.contains("-cef-disable-gpu") {
+            args.append("-cef-disable-gpu")
+        }
+
         for await _ in try Self.runWineProcess(
             name: url.lastPathComponent,
             args: ["start", "/unix", url.path(percentEncoded: false)] + args,
