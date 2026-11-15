@@ -131,7 +131,9 @@ public enum DXVKHUD: Codable, Equatable {
 }
 
 public struct BottleDXVKConfig: Codable, Equatable {
-    var dxvk: Bool = false
+    /// On by default: with the WineHQ runtime there is no D3DMetal, and wined3d on MoltenVK tops out at
+    /// D3D feature level 9_3 (no geometry shaders / cull distance), so DX10/11 titles need DXVK.
+    var dxvk: Bool = true
     var dxvkAsync: Bool = true
     var dxvkHud: DXVKHUD = .off
 
@@ -139,7 +141,7 @@ public struct BottleDXVKConfig: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.dxvk = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? false
+        self.dxvk = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? true
         self.dxvkAsync = try container.decodeIfPresent(Bool.self, forKey: .dxvkAsync) ?? true
         self.dxvkHud = try container.decodeIfPresent(DXVKHUD.self, forKey: .dxvkHud) ?? .off
     }
