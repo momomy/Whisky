@@ -236,10 +236,8 @@ public class Wine {
             in: bottle.url.appending(path: "drive_c").appending(path: "windows").appending(path: "system32"),
             withContentsIn: Wine.dxvkFolder.appending(path: "x64")
         )
-        try FileManager.default.replaceDLLs(
-            in: bottle.url.appending(path: "drive_c").appending(path: "windows").appending(path: "syswow64"),
-            withContentsIn: Wine.dxvkFolder.appending(path: "x32")
-        )
+        // 32-bit DXVK is not installed: under WineHQ's new WoW64 on macOS it fails to initialise
+        // ("Error during initialization" in 32-bit titles), so 32-bit programs keep Wine's builtin d3d.
     }
 
     /// Construct an environment merging the bottle values with the given values
