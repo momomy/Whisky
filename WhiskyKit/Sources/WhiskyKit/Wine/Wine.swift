@@ -199,9 +199,18 @@ public class Wine {
 
         // Deal with WineCX version names
         if let index = output.firstIndex(where: { $0.isWhitespace }) {
-            return String(output.prefix(upTo: index))
+            output = String(output.prefix(upTo: index))
         }
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizeWineVersion(output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// WineHQ prints `11.21`, `11.0-rc3` or, for git builds, `11.21-1-gc12169ef95b`.
+    /// Turn that into a three component semantic version (`11.21.0`) so `SemanticVersion` can parse it.
+    public static func normalizeWineVersion(_ raw: String) -> String {
+        let core = raw.split(separator: "-", maxSplits: 1).first.map(String.init) ?? raw
+        var parts = core.split(separator: ".").map(String.init)
+        while parts.count < 3 { parts.append("0") }
+        return parts.prefix(3).joined(separator: ".")
     }
 
     @discardableResult
