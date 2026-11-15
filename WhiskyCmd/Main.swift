@@ -34,9 +34,9 @@ struct Whisky: ParsableCommand {
                       Delete.self,
                       Remove.self,
                       Run.self,
-                      Shellenv.self
-                      /*Install.self,
-                      Uninstall.self*/])
+                      Shellenv.self,
+                      Install.self,
+                      Uninstall.self])
 }
 
 extension Whisky {
@@ -199,20 +199,62 @@ extension Whisky {
     }
 
     struct Install: ParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Install WhiskyWine.")
+        static let configuration = CommandConfiguration(
+            abstract: "Install WhiskyWine.",
+            discussion: "Installs from a local Libraries.tar.gz, or downloads it from the runtime base URL "
+                + "(override with WHISKY_WINE_BASE_URL)."
+        )
+
+        @Option(name: [.long, .short], help: "Path to a local Libraries.tar.gz") var from: String?
 
         mutating func run() throws {
+            let archive: URL
+            var downloaded = false
+            if let from {
+                archive = URL(fileURLWithPath: (from as NSString).expandingTildeInPath)
+                guard FileManager.default.fileExists(atPath: archive.path) else {
+                    throw ValidationError("No such file: \(archive.path)")
+                }
+            } else {
+                let source = WhiskyWineInstaller.runtimeArchiveURL
+                print("Downloading \(source.absoluteString)")
+                archive = try Self.download(source)
+                downloaded = true
+            }
 
+            print("Installing into \(WhiskyWineInstaller.libraryFolder.path)")
+            guard WhiskyWineInstaller.install(from: archive, removeArchive: downloaded),
+                  let version = WhiskyWineInstaller.whiskyWineVersion() else {
+                throw ValidationError("WhiskyWine installation failed.")
+            }
+            print("WhiskyWine \(version) installed.")
+        }
+
+        private static func download(_ source: URL) throws -> URL {
+            let semaphore = DispatchSemaphore(value: 0)
+            nonisolated(unsafe) var result: Result<URL, Error> = .failure(ValidationError("Download did not start."))
+            URLSession(configuration: .ephemeral).downloadTask(with: source) { url, response, error in
+                defer { semaphore.signal() }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+                guard let url, error == nil, status == 200 else {
+                    result = .failure(error ?? ValidationError("HTTP \(status) for \(source.absoluteString)"))
+                    return
+                }
+                let kept = FileManager.default.temporaryDirectory
+                    .appending(path: "WhiskyWine-\(UUID().uuidString).tar.gz")
+                result = Result { try FileManager.default.moveItem(at: url, to: kept); return kept }
+            }.resume()
+            semaphore.wait()
+            return try result.get()
         }
     }
 
     struct Uninstall: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Uninstall WhiskyWine.")
 
-        @Flag(name: [.long, .short], help: "Uninstall WhiskyWine") var whiskyWine = false
-
         mutating func run() throws {
-
+            WhiskyWineInstaller.uninstall()
+            print("WhiskyWine removed from \(WhiskyWineInstaller.libraryFolder.path)")
         }
     }
 }

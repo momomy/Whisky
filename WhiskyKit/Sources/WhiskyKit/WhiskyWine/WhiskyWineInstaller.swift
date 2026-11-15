@@ -31,11 +31,38 @@ public class WhiskyWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
-    public static func isWhiskyWineInstalled() -> Bool {
-        return whiskyWineVersion() != nil
+    /// Default location of the published WhiskyWine runtime (WineHQ based, built from momomy/wine `macos/`).
+    /// `releases/latest/download/<asset>` always resolves to the newest GitHub release.
+    public static let defaultRuntimeBaseURL = URL(string: "https://github.com/momomy/wine/releases/latest/download/")!
+
+    /// Base URL the runtime is downloaded from.
+    /// Override with the `WHISKY_WINE_BASE_URL` environment variable or the `whiskyWineBaseURL` user default
+    /// (e.g. a `file://` directory holding a locally built `Libraries.tar.gz`).
+    public static var runtimeBaseURL: URL {
+        let override = ProcessInfo.processInfo.environment["WHISKY_WINE_BASE_URL"]
+            ?? UserDefaults.standard.string(forKey: "whiskyWineBaseURL")
+        if let override, var url = URL(string: override) {
+            if !url.path.hasSuffix("/") { url = url.appending(path: "") }
+            return url
+        }
+        return defaultRuntimeBaseURL
     }
 
-    public static func install(from: URL) {
+    /// `Libraries.tar.gz` runtime archive
+    public static var runtimeArchiveURL: URL { runtimeBaseURL.appending(path: "Libraries.tar.gz") }
+    /// Version manifest published next to the archive
+    public static var runtimeVersionURL: URL { runtimeBaseURL.appending(path: "WhiskyWineVersion.plist") }
+
+    public static func isWhiskyWineInstalled() -> Bool {
+        return whiskyWineVersion() != nil
+            && FileManager.default.isExecutableFile(atPath: binFolder.appending(path: "wine").path)
+    }
+
+    /// Install the runtime from a `Libraries.tar.gz`.
+    /// - Parameter removeArchive: delete the archive afterwards (true for downloaded temp files,
+    ///   false for a user supplied local file).
+    @discardableResult
+    public static func install(from: URL, removeArchive: Bool = true) -> Bool {
         do {
             if !FileManager.default.fileExists(atPath: applicationFolder.path) {
                 try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
@@ -46,9 +73,13 @@ public class WhiskyWineInstaller {
             }
 
             try Tar.untar(tarBall: from, toURL: applicationFolder)
-            try FileManager.default.removeItem(at: from)
+            if removeArchive {
+                try FileManager.default.removeItem(at: from)
+            }
+            return isWhiskyWineInstalled()
         } catch {
             print("Failed to install WhiskyWine: \(error)")
+            return false
         }
     }
 
@@ -60,42 +91,25 @@ public class WhiskyWineInstaller {
         }
     }
 
+    /// Fetch the version of the published runtime, if reachable.
+    public static func remoteWhiskyWineVersion() async -> SemanticVersion? {
+        let request = URLRequest(url: runtimeVersionURL, cachePolicy: .reloadIgnoringLocalCacheData,
+                                 timeoutInterval: 15)
+        do {
+            let (data, _) = try await URLSession(configuration: .ephemeral).data(for: request)
+            return try PropertyListDecoder().decode(WhiskyWineVersion.self, from: data).version
+        } catch {
+            print("Failed to fetch WhiskyWine version: \(error)")
+            return nil
+        }
+    }
+
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
-        let versionPlistURL = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
-        let localVersion = whiskyWineVersion()
-
-        var remoteVersion: SemanticVersion?
-
-        if let remoteUrl = URL(string: versionPlistURL) {
-            remoteVersion = await withCheckedContinuation { continuation in
-                URLSession(configuration: .ephemeral).dataTask(with: URLRequest(url: remoteUrl)) { data, _, error in
-                    do {
-                        if error == nil, let data = data {
-                            let decoder = PropertyListDecoder()
-                            let remoteInfo = try decoder.decode(WhiskyWineVersion.self, from: data)
-                            let remoteVersion = remoteInfo.version
-
-                            continuation.resume(returning: remoteVersion)
-                            return
-                        }
-                        if let error = error {
-                            print(error)
-                        }
-                    } catch {
-                        print(error)
-                    }
-
-                    continuation.resume(returning: nil)
-                }.resume()
-            }
+        if let localVersion = whiskyWineVersion(),
+           let remoteVersion = await remoteWhiskyWineVersion(),
+           localVersion < remoteVersion {
+            return (true, remoteVersion)
         }
-
-        if let localVersion = localVersion, let remoteVersion = remoteVersion {
-            if localVersion < remoteVersion {
-                return (true, remoteVersion)
-            }
-        }
-
         return (false, SemanticVersion(0, 0, 0))
     }
 

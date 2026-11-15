@@ -82,10 +82,12 @@ struct ConfigView: View {
                             }
                         })
                 }
-                Picker("config.enhancedSync", selection: $bottle.settings.enhancedSync) {
-                    Text("config.enhancedSync.none").tag(EnhancedSync.none)
-                    Text("config.enhacnedSync.esync").tag(EnhancedSync.esync)
-                    Text("config.enhacnedSync.msync").tag(EnhancedSync.msync)
+                if WineRuntimeCapabilities.enhancedSync {
+                    Picker("config.enhancedSync", selection: $bottle.settings.enhancedSync) {
+                        Text("config.enhancedSync.none").tag(EnhancedSync.none)
+                        Text("config.enhacnedSync.esync").tag(EnhancedSync.esync)
+                        Text("config.enhacnedSync.msync").tag(EnhancedSync.msync)
+                    }
                 }
                 SettingItemView(title: "config.dpi", loadingState: dpiConfigLoadingState) {
                     Button("config.inspect") {
@@ -141,7 +143,7 @@ struct ConfigView: View {
                     Text("config.metalTrace")
                     Text("config.metalTrace.info")
                 }
-                if let device = MTLCreateSystemDefaultDevice() {
+                if WineRuntimeCapabilities.d3dMetal, let device = MTLCreateSystemDefaultDevice() {
                     // Represents the Apple family 9 GPU features that correspond to the Apple A17, M3, and M4 GPUs.
                     if device.supportsFamily(.apple9) {
                         Toggle(isOn: $bottle.settings.dxrEnabled) {

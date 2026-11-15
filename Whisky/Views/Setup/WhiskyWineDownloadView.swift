@@ -65,14 +65,27 @@ struct WhiskyWineDownloadView: View {
         .frame(width: 400, height: 200)
         .onAppear {
             Task {
-                if let url: URL = URL(string: "https://data.getwhisky.app/Wine/Libraries.tar.gz") {
-                    downloadTask = URLSession(configuration: .ephemeral).downloadTask(with: url) { url, _, _ in
+                do {
+                    let url = WhiskyWineInstaller.runtimeArchiveURL
+                    downloadTask = URLSession(configuration: .ephemeral).downloadTask(with: url) { url, response, error in
+                        // URLSession deletes the temp file as soon as this handler returns, so move it now.
+                        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+                        guard let url, error == nil, status == 200 else {
+                            print("WhiskyWine download failed (HTTP \(status)): \(String(describing: error))")
+                            return
+                        }
+                        let kept = FileManager.default.temporaryDirectory
+                            .appending(path: "WhiskyWine-\(UUID().uuidString).tar.gz")
+                        do {
+                            try FileManager.default.moveItem(at: url, to: kept)
+                        } catch {
+                            print("Failed to keep WhiskyWine download: \(error)")
+                            return
+                        }
                         Task.detached {
                             await MainActor.run {
-                                if let url = url {
-                                    tarLocation = url
-                                    proceed()
-                                }
+                                tarLocation = kept
+                                proceed()
                             }
                         }
                     }

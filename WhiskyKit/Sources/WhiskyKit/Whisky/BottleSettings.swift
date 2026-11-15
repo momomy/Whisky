@@ -85,15 +85,17 @@ public enum WinVersion: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// ESync/MSync are CrossOver/wine-staging patches. Upstream WineHQ on macOS has neither,
+/// so with the WineHQ based runtime these only set (harmless) environment variables.
 public enum EnhancedSync: Codable, Equatable {
     case none, esync, msync
 }
 
 public struct BottleWineConfig: Codable, Equatable {
-    static let defaultWineVersion = SemanticVersion(7, 7, 0)
+    static let defaultWineVersion = SemanticVersion(11, 21, 0)
     var wineVersion: SemanticVersion = Self.defaultWineVersion
     var windowsVersion: WinVersion = .win10
-    var enhancedSync: EnhancedSync = .msync
+    var enhancedSync: EnhancedSync = .none
     var avxEnabled: Bool = false
 
     public init() {}
@@ -103,7 +105,7 @@ public struct BottleWineConfig: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.wineVersion = try container.decodeIfPresent(SemanticVersion.self, forKey: .wineVersion) ?? Self.defaultWineVersion
         self.windowsVersion = try container.decodeIfPresent(WinVersion.self, forKey: .windowsVersion) ?? .win10
-        self.enhancedSync = try container.decodeIfPresent(EnhancedSync.self, forKey: .enhancedSync) ?? .msync
+        self.enhancedSync = try container.decodeIfPresent(EnhancedSync.self, forKey: .enhancedSync) ?? .none
         self.avxEnabled = try container.decodeIfPresent(Bool.self, forKey: .avxEnabled) ?? false
     }
     // swiftlint:enable line_length
@@ -243,8 +245,7 @@ public struct BottleSettings: Codable, Equatable {
     @discardableResult
     public static func decode(from metadataURL: URL) throws -> BottleSettings {
         guard FileManager.default.fileExists(atPath: metadataURL.path(percentEncoded: false)) else {
-            let decoder = PropertyListDecoder()
-            let settings = try decoder.decode(BottleSettings.self, from: Data(contentsOf: metadataURL))
+            let settings = BottleSettings()
             try settings.encode(to: metadataURL)
             return settings
         }
@@ -297,7 +298,7 @@ public struct BottleSettings: Codable, Equatable {
             wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
         }
 
-        switch enhancedSync {
+        switch WineRuntimeCapabilities.enhancedSync ? enhancedSync : .none {
         case .none:
             break
         case .esync:
@@ -322,7 +323,7 @@ public struct BottleSettings: Codable, Equatable {
             wineEnv.updateValue("1", forKey: "ROSETTA_ADVERTISE_AVX")
         }
 
-        if dxrEnabled {
+        if dxrEnabled && WineRuntimeCapabilities.d3dMetal {
             wineEnv.updateValue("1", forKey: "D3DM_SUPPORT_DXR")
         }
     }
