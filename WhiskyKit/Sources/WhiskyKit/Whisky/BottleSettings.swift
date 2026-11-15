@@ -300,6 +300,13 @@ public struct BottleSettings: Codable, Equatable {
             wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
         }
 
+        if dxvk {
+            // MoltenVK 1.4 + Metal3 argument buffers: DXVK 1.10 exhausts the descriptor pools on
+            // every frame and heavy scenes end in a GPU page fault (VK_ERROR_DEVICE_LOST).
+            // Seen with The Witcher 3 1.32; see docs/compatibility.md.
+            wineEnv.updateValue("0", forKey: "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS")
+        }
+
         switch WineRuntimeCapabilities.enhancedSync ? enhancedSync : .none {
         case .none:
             break
