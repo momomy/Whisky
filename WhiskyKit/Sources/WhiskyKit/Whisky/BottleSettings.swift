@@ -92,7 +92,7 @@ public enum EnhancedSync: Codable, Equatable {
 }
 
 public struct BottleWineConfig: Codable, Equatable {
-    static let defaultWineVersion = SemanticVersion(11, 21, 0)
+    static let defaultWineVersion = SemanticVersion(11, 0, 0)
     var wineVersion: SemanticVersion = Self.defaultWineVersion
     var windowsVersion: WinVersion = .win10
     var enhancedSync: EnhancedSync = .none
@@ -282,8 +282,26 @@ public struct BottleSettings: Codable, Equatable {
 
     // swiftlint:disable:next cyclomatic_complexity
     public func environmentVariables(wineEnv: inout [String: String]) {
+        // The CrossOver based runtime reports the user name "crossover" by default (CW Hack 12735).
+        // Keep using the real profile (C:\\users\\<name>) so existing bottles keep their data.
+        wineEnv.updateValue("1", forKey: "CX_REPORT_REAL_USERNAME")
+
+        if !dxvk && WineRuntimeCapabilities.d3dMetal {
+            // Apple D3DMetal (GPTK): DX10-12 -> Metal. The GPTK DLLs live outside the builtin DLL
+            // directory and are put in front of it for this process tree only.
+            let lib = WhiskyWineInstaller.libraryFolder.appending(path: "Wine/lib")
+            wineEnv.updateValue(lib.appending(path: "gptk/wine").path(percentEncoded: false),
+                                forKey: "WINEDLLPATH_PREPEND")
+            wineEnv.updateValue("d3dmetal", forKey: "CX_ACTIVE_GRAPHICS_BACKEND")
+            wineEnv.updateValue(lib.appending(path: "external/libd3dshared.dylib").path(percentEncoded: false),
+                                forKey: "CX_APPLEGPTK_LIBD3DSHARED_PATH")
+            wineEnv.updateValue("dxgi,d3d10,d3d11,d3d12=b;vulkan-1=b", forKey: "WINEDLLOVERRIDES")
+        }
+
         if dxvk {
-            wineEnv.updateValue("dxgi,d3d9,d3d10core,d3d11=n,b", forKey: "WINEDLLOVERRIDES")
+            // vulkan-1=b: CEF (Steam UI) ships its own Vulkan loader which recurses until the stack
+            // overflows on this runtime; use Wine's builtin one.
+            wineEnv.updateValue("dxgi,d3d9,d3d10core,d3d11=n,b;vulkan-1=b", forKey: "WINEDLLOVERRIDES")
             switch dxvkHud {
             case .full:
                 wineEnv.updateValue("full", forKey: "DXVK_HUD")
